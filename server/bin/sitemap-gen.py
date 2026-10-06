@@ -38,6 +38,7 @@ PREFIX = "https://savepearlharbor.com/?"
 PAGE_SIZE = 2000          # wp_sitemaps_get_max_urls(); a page is filled up to this
 URL_LIMIT = 50000         # sitemaps.org hard limit per file
 KEEP_GENERATIONS = 2
+FULL_SLEEP = 12.0         # --full: pause between pages (sda w_await alert 2026-10-06)
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sitemap-worker.php")
 
 # query string -> file name. MUST stay in sync with map $sph_sitemap_file in
@@ -78,7 +79,11 @@ class Worker:
     def __call__(self, cmd, arg):
         self.calls += 1
         r = subprocess.run(
+            # nice/ionice for the PHP side. NB: sda uses the "none" scheduler on
+            # ms14, where I/O classes are ignored -- the real throttle is the
+            # pause between pages; nice still keeps PHP CPU off the site's way.
             ["docker", "exec", "-i", "-u", self.user, self.container,
+             "nice", "-n", "19", "ionice", "-c3",
              "php", "-d", "memory_limit=1024M", "--", cmd, json.dumps(arg)],
             input=self.src, capture_output=True, timeout=600)
         if r.returncode != 0:
@@ -157,11 +162,16 @@ def run(a):
                 os.path.join(cur_dir, f"posts-post-{i + 1}.xml"))):
             todo.append(i)
     todo.sort()
+    # "full" also covers an incremental run without state (first run, lost
+    # state): that renders all ~140 pages too and gets the same slow pace on purpose
+    pause = a.sleep if a.sleep is not None else (FULL_SLEEP if full else a.pause)
+    if a.dry_run is not None:
+        todo = todo[:a.dry_run]
 
     files = {}                                   # name -> bytes (newly rendered)
     for n, i in enumerate(todo):
         if n:
-            time.sleep(a.pause)
+            time.sleep(pause)
         name = f"posts-post-{i + 1}"
         r = w("render", [{"name": name, "kind": "post", "lo": ranges[i][0], "hi": ranges[i][1]}])[name]
         body = r["xml"].encode()
@@ -184,7 +194,7 @@ def run(a):
             raise RuntimeError(f"index: no static name for {loc}")
         jobs.append(j)
     if jobs:
-        time.sleep(a.pause)
+        time.sleep(pause)
         out = w("render", jobs)
         for j in jobs:
             b = out[j["name"]]["xml"].encode()
@@ -204,9 +214,15 @@ def run(a):
                  "files": wanted}
     stale = set(os.listdir(cur_dir)) if cur_dir else set()
     stale = {f[:-4] for f in stale if f.endswith(".xml")} - set(wanted)
-    if cur_dir and not changed and not stale and not full and new_state == state:
+    if cur_dir and not changed and not stale and not full and new_state == state and a.dry_run is None:
         log(f"OK incremental: no changes, rendered={len(todo)} queries={w.calls} "
             f"pages={len(ranges)} in {time.monotonic() - t0:.1f}s")
+        return 0
+
+    if a.dry_run is not None:
+        log(f"DRY-RUN {'full' if full else 'incremental'}: rendered {len(todo)} post pages "
+            f"(pause {pause}s) + index + {len(jobs)} others, nothing published, "
+            f"queries={w.calls} in {time.monotonic() - t0:.1f}s")
         return 0
 
     # 4. new generation: rendered files + hard links for the rest, then switch
@@ -254,9 +270,19 @@ def main():
     ap.add_argument("--root", default="/opt/services/savepearlharbor.com/sitemap-static")
     ap.add_argument("--container", default="savepearlharborcom-php-1")
     ap.add_argument("--user", default="33:33", help="www-data, the uid WordPress runs as")
-    ap.add_argument("--pause", type=float, default=1.0, help="seconds between page renders")
+    ap.add_argument("--pause", type=float, default=1.0, help="seconds between page renders in incremental mode (--full uses --sleep)")
+    ap.add_argument("--sleep", type=float, default=None,
+                    help=f"seconds between page renders; default {FULL_SLEEP} with --full "
+                         "(spreads the ~140 pages over ~45 min so the disk is never busy "
+                         "for long), --pause otherwise")
     ap.add_argument("--full", action="store_true")
+    ap.add_argument("--dry-run", type=int, metavar="N", default=None,
+                    help="render at most N post pages (+ index and others), validate, "
+                         "publish nothing: current/, gen-*/ and state.json are untouched "
+                         "(only the usual .lock file is taken)")
     a = ap.parse_args()
+    if a.dry_run is not None and a.dry_run < 0:
+        ap.error("--dry-run N needs N >= 0")
     os.makedirs(a.root, mode=0o755, exist_ok=True)
     lock = open(os.path.join(a.root, ".lock"), "w")
     try:
