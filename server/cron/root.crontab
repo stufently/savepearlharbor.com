@@ -10,3 +10,9 @@
 # flock -n: an overlapping run is skipped, not queued (the script also locks itself).
 23 * * * * /usr/bin/flock -n /run/lock/sph-sitemap.lock /opt/services/savepearlharbor.com/bin/sitemap-gen.py >> /opt/services/savepearlharbor.com/sitemap-gen.log 2>&1
 47 3 * * 0 /usr/bin/flock -w 900 /run/lock/sph-sitemap.lock /usr/bin/nice -n 19 /usr/bin/ionice -c3 /opt/services/savepearlharbor.com/bin/sitemap-gen.py --full >> /opt/services/savepearlharbor.com/sitemap-gen.log 2>&1
+
+# Night purge of the disabled W3TC object cache, 01:05-05:00 UTC (Sundays until
+# 03:30, before the sitemap --full). Time-sliced 4 min work / 4 min idle so the
+# Zabbix "write await > 20 ms for 15m" trigger always sees clean minutes.
+# The script deletes this line itself when the directory is empty.
+5 1 * * * /usr/bin/flock -n /run/lock/sph-oc-purge.lock /usr/bin/timeout 230m /usr/bin/nice -n 19 /opt/services/savepearlharbor.com/bin/oc-purge-night.sh >> /opt/services/savepearlharbor.com/oc-purge.log 2>&1
