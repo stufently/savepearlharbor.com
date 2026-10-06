@@ -10,15 +10,17 @@ server, copy it back here.
 | repo | on the server | notes |
 |---|---|---|
 | `server/docker-compose.yml` | `docker-compose.yml` | passwords come from `.env` (0600, see `server/.env.example`) |
-| `server/Caddyfile` | `Caddyfile` | TLS, proxies to nginx:80 |
-| `server/nginx/nginx.conf` | `nginx.conf` -> `/etc/nginx/conf.d/default.conf` | 410 for crawl traps, rate limit, static sitemaps, `/parser/` closed |
-| `server/php/php-fpm-www.conf`, `php-custom.ini` | same names | fpm pool / php.ini overrides |
+| `server/Caddyfile` | `Caddyfile` | TLS, proxies to nginx:80; JSON access log with duration in `data/caddy/data/access.log` (rolled by Caddy) |
+| `server/nginx/nginx.conf` | `nginx.conf` -> `/etc/nginx/conf.d/default.conf` | 410 for crawl traps and per-post comment feeds, rate limits (PHP, wp-login 5r/m), static sitemaps + XSL, gzip, fastcgi_cache on tmpfs, `/parser/` closed, access log `logs/nginx/access.log` with `rt=` `urt=` `cs=` |
+| `server/nginx/nginx.d/bots.conf` | `nginx.d/` -> `/etc/nginx/sph/` | blocked bot UAs and scraper networks (403) |
+| `server/php/php-fpm-www.conf`, `php-custom.ini`, `php-opcache.ini` | same names | fpm pool / php.ini overrides; `php-opcache.ini` -> `conf.d/zz-opcache.ini` |
 | `server/mysql/mysql-tuning.cnf` | `mysql-tuning.cnf` -> `/etc/mysql/conf.d/zz-tuning.cnf` | |
 | `server/robots.txt` | `site/robots.txt` | |
-| `server/mu-plugins/` | `site/wp-content/mu-plugins/` | |
+| `server/mu-plugins/` | `site/wp-content/mu-plugins/` | `sph-cache.php`: cache TTL hint (X-Accel-Expires), no comment-feed links |
 | `server/parser/` | `site/parser/` | Habr importer; `config.inc.php` (root 0600) from `config.inc.php.example` |
 | `server/bin/sitemap-gen.py`, `sitemap-worker.php` | `bin/` | static sitemap generator (root cron) |
-| `server/logrotate/savepearlharbor-parser` | `/etc/logrotate.d/` | parser + sitemap logs |
+| `server/logrotate/savepearlharbor-parser`, `savepearlharbor-nginx` | `/etc/logrotate.d/` | parser + sitemap logs, nginx access log |
+| `server/maintenance/` | `/root/` | one-off scripts (2026-10-06 post_modified_gmt backfill) |
 | `server/cron/root.crontab` | `crontab -l` of root | |
 
 `parser/` in the repo root is the old 2019 parser, kept for history.
@@ -54,3 +56,14 @@ of PHP/MySQL and bots fetch ~300 pages a day, so nginx serves them from files:
 /opt/services/savepearlharbor.com/bin/sitemap-gen.py          # incremental
 /opt/services/savepearlharbor.com/bin/sitemap-gen.py --full   # re-render all pages
 ```
+
+## Page cache
+
+nginx `fastcgi_cache` (zone `sph`, tmpfs 1.6 GB at `/var/cache/nginx/sph`)
+for anonymous GET/HEAD of an allow-list of URL shapes: `/`, `/?p=N`,
+`/?paged=N`, `/?cat=N`, site/author feeds. Search, previews, admin, login,
+REST and any request with a WP session cookie go to PHP. TTL comes from
+`mu-plugins/sph-cache.php` (article 1 day, feeds 30 min, lists 10 min).
+`X-Cache-Status` shows HIT/MISS/BYPASS. Purge everything: recreate the nginx
+container, or `docker exec savepearlharborcom-nginx-1 sh -c 'rm -rf /var/cache/nginx/sph/*'`.
+W3TC object cache is disabled (it wrote ~150 kB/s of cache files to disk).

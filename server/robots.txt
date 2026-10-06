@@ -40,6 +40,36 @@ Disallow: /*?s=
 Disallow: /*&s=
 Allow: /?sitemap=
 
+# SEO / data / media-monitoring crawlers are refused (06.10.2026, owner
+# decision); nginx answers them 403 everywhere except this file
+# (nginx.d/bots.conf). AI crawlers and search engines are NOT listed here.
+# One group, several User-agent lines (RFC 9309 section 2.1).
+User-agent: AhrefsBot
+User-agent: AhrefsSiteAudit
+User-agent: SemrushBot
+User-agent: SemrushBot-BA
+User-agent: SERankingBacklinksBot
+User-agent: keys-so-bot
+User-agent: DotBot
+User-agent: DataForSeoBot
+User-agent: MJ12bot
+User-agent: PetalBot
+User-agent: QlyzeBot
+User-agent: SemanticVisionsBot
+User-agent: AionBot
+User-agent: LinkupBot
+User-agent: BLEXBot
+User-agent: serpstatbot
+User-agent: Barkrowler
+User-agent: MegaIndex
+User-agent: MegaIndex.ru
+User-agent: trendictionbot
+User-agent: Twingly
+User-agent: Mediatoolkitbot
+User-agent: SeekportBot
+User-agent: ZoominfoBot
+Disallow: /
+
 Sitemap: https://savepearlharbor.com/?sitemap=index
 
 

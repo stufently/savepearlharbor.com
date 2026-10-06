@@ -1,0 +1,16 @@
+# /etc/logrotate.d/savepearlharbor-nginx  (ms14)
+# nginx access log with timings/cache status (bind mount ./logs/nginx ->
+# /var/log/sph). copytruncate: no signal to the container needed.
+# Caddy's own log (data/caddy/data/access.log) is rolled by Caddy itself.
+/opt/services/savepearlharbor.com/logs/nginx/*.log
+{
+    daily
+    maxsize 200M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+}

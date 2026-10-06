@@ -1,4 +1,14 @@
 savepearlharbor.com {
+    # access log with duration; /data is the bind mount ./data/caddy/data.
+    # Caddy rolls it itself (no logrotate needed). Cookie/Authorization
+    # headers are redacted by Caddy by default.
+    log {
+        output file /data/access.log {
+            roll_size 50MiB
+            roll_keep 5
+        }
+        format json
+    }
     reverse_proxy nginx:80
 }
 
