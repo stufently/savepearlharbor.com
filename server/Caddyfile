@@ -1,0 +1,7 @@
+savepearlharbor.com {
+    reverse_proxy nginx:80
+}
+
+www.savepearlharbor.com {
+    redir https://savepearlharbor.com{uri} permanent
+}

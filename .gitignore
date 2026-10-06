@@ -1,0 +1,6 @@
+.env
+config.inc.php
+*.log
+logs/
+wp-content/cache/
+__pycache__/

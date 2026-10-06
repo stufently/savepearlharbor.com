@@ -1,0 +1,10 @@
+# Тюнинг 06.10.2026: алерты медленной записи на sda (Zabbix).
+[mysqld]
+# Репликации нет, бэкап — логический дамп (database-backup), бинлог не нужен.
+skip-log-bin
+# База ~8.5 ГБ, RAM 15 ГБ: по умолчанию было 128 МБ.
+innodb_buffer_pool_size = 6G
+innodb_redo_log_capacity = 1G
+# fsync redo раз в секунду, а не на каждый коммит: при падении ОС теряется до ~1 с.
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT

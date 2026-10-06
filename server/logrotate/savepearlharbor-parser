@@ -1,0 +1,18 @@
+# /etc/logrotate.d/savepearlharbor-parser  (ms14)
+# Parser and sitemap-generator logs. copytruncate: the writers keep no handle
+# open between runs, but the parser appends via >> and PHP error_log, so
+# truncating in place is the simplest safe option.
+/opt/services/savepearlharbor.com/parser-cron.log
+/opt/services/savepearlharbor.com/site/parser/parser.log
+/opt/services/savepearlharbor.com/sitemap-gen.log
+{
+    weekly
+    maxsize 50M
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+}

@@ -1,0 +1,68 @@
+# savepearlharbor.com/robots.txt   --- PHASE A (11.08.2026) + PHASE B (06.10.2026)
+# Deploy to: /opt/services/savepearlharbor.com/site/robots.txt  (www-data, 644)
+#
+# WHY THIS FILE MUST EXIST AT ALL: today /robots.txt returns 112 KB of HTML
+# homepage with HTTP 200, so every crawler concludes "no rules, no sitemap"
+# and walks the whole URL space.
+#
+# PHASE B (06.10.2026) adds /page/, /users/ and search -- see the notes at the end.
+
+User-agent: *
+
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+Disallow: /page/
+Disallow: /users/
+Disallow: /*?s=
+Disallow: /*&s=
+
+# Permalinks are plain, so the sitemaps live on query-string URLs.
+# All 271147 posts are listed there -- this is what makes cutting deep
+# pagination safe: discovery no longer depends on the paginator.
+Allow: /?sitemap=
+
+# Only bingbot honours this. Google ignores crawl-delay outright and removed
+# the Crawl Rate Limiter from GSC in 2024; Yandex dropped it in 2018 in favour
+# of the Webmaster setting; PetalBot, Amazonbot and meta-externalagent do not
+# document support.
+#
+# The Disallow/Allow lines are REPEATED here on purpose. A crawler obeys
+# exactly ONE group -- the most specific one that names it -- and groups are
+# never merged. Without this repetition bingbot, having found its own group,
+# would ignore "User-agent: *" entirely and crawl /wp-admin/.
+User-agent: bingbot
+Crawl-delay: 5
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+Disallow: /page/
+Disallow: /users/
+Disallow: /*?s=
+Disallow: /*&s=
+Allow: /?sitemap=
+
+Sitemap: https://savepearlharbor.com/?sitemap=index
+
+
+# ============================================================================
+# PHASE B -- applied 06.10.2026 after 8 weeks of 410, decided on GSC data
+# ============================================================================
+# URL Inspection, 06.10.2026 (property https://savepearlharbor.com/):
+#   /page/150/, /users/x/, /users/<name>/, /users/<name>/?paged=15555
+#       -> "URL is unknown to Google". Nothing indexed to strand: blocking
+#          is safe; these paths have answered 410 since 11.08.2026.
+#   /?s=test, /?s=<cyrillic>  -> "URL is unknown to Google". Search pages
+#       carry WP's noindex but take >60 s to render, so crawling them only
+#       burns PHP workers. Not indexed, so the "Indexed, though blocked"
+#       trap does not apply. "&s=" covers s as a non-first parameter; it does
+#       NOT match our sitemap URLs (&sitemap-subtype=...): "=" must follow "s".
+#
+# Deliberately NOT blocked:
+#   /*?paged=       -- pages 2..99 answer 200 and are the archive navigation;
+#                      >=100 already answers 410 (robots.txt can't say ">=100").
+#                      e.g. /?paged=26043 is "Crawled - currently not indexed",
+#                      last crawl 30.05 -- let Google re-fetch and see the 410.
+#   /*?replytocom=  -- answers 200 with "noindex, follow"; a Disallow would hide
+#                      the noindex. Unknown to Google anyway.
+#
+# NB on syntax: "?" is a literal in robots.txt. Never put a "# ..." comment on
+# the same line as a directive -- not portable across parsers.
