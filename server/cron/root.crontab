@@ -1,0 +1,11 @@
+# root crontab on ms14 (savepearlharbor.com part). Edit with:
+#   crontab -l > /root/crontab.bak-$(date +%F); crontab -e
+# No -t on docker exec: cron has no TTY.
+
+# SavePearlHarbor Habr parser (every 5 min)
+*/5 * * * * docker exec savepearlharborcom-php-1 php /var/www/html/parser/parser_json.php >> /opt/services/savepearlharbor.com/parser-cron.log 2>&1
+
+# Static sitemaps: hourly incremental (only changed pages), weekly full re-render.
+# flock -n: an overlapping run is skipped, not queued (the script also locks itself).
+23 * * * * /usr/bin/flock -n /run/lock/sph-sitemap.lock /opt/services/savepearlharbor.com/bin/sitemap-gen.py >> /opt/services/savepearlharbor.com/sitemap-gen.log 2>&1
+47 3 * * 0 /usr/bin/flock -w 900 /run/lock/sph-sitemap.lock /opt/services/savepearlharbor.com/bin/sitemap-gen.py --full >> /opt/services/savepearlharbor.com/sitemap-gen.log 2>&1
