@@ -56,8 +56,13 @@ finish() {
     if crontab -l 2>/dev/null | grep -q 'oc-purge-night.sh'; then
         local bak=/root/crontab.bak-$(date -u +%F)-oc-purge-done
         if crontab -l > "$bak" && [ -s "$bak" ] && chmod 600 "$bak"; then
-            grep -v 'oc-purge-night.sh' "$bak" | crontab - \
-                && log "cron line removed (backup $bak)"
+            # install only if nobody changed the crontab since the backup
+            if crontab -l | cmp -s - "$bak"; then
+                grep -v 'oc-purge-night.sh' "$bak" | crontab - \
+                    && log "cron line removed (backup $bak)"
+            else
+                log "crontab changed during removal, cron line left in place (marker set)"
+            fi
         else
             log "crontab backup failed, cron line left in place (marker set)"
         fi
@@ -107,7 +112,7 @@ log "start: top-level entries=$(remaining) window_end=$(date -u -d @"$end" +%T)"
 # follows a symlink, also not one swapped in mid-walk; -xdev stays on this fs.
 # Returns 1 only when the directory is verifiably empty.
 delete_one() {
-    local top rc
+    local top rc left
     same_dir
     engine_off
     top=$(find . -mindepth 1 -maxdepth 1 -print -quit); rc=$?
@@ -117,8 +122,12 @@ delete_one() {
         ./?*) ;;
         *) log "ABORT: unexpected entry $top"; exit 2 ;;
     esac
-    ionice -c3 find "$top" -xdev -depth -delete \
-        || { log "ABORT: find -delete failed on $top"; exit 2; }
+    # a chunk must not run past the window end (Sunday 03:30 < sitemap 03:47)
+    left=$(( end - $(date +%s) ))
+    [ "$left" -gt 0 ] || { log "window end reached"; exit 0; }
+    timeout "$left" ionice -c3 find "$top" -xdev -depth -delete; rc=$?
+    [ "$rc" -eq 124 ] && { log "window end reached inside chunk $top, stop"; exit 0; }
+    [ "$rc" -eq 0 ] || { log "ABORT: find -delete failed on $top (rc=$rc)"; exit 2; }
     return 0
 }
 
