@@ -38,6 +38,7 @@ PREFIX = "https://savepearlharbor.com/?"
 PAGE_SIZE = 2000          # wp_sitemaps_get_max_urls(); a page is filled up to this
 URL_LIMIT = 50000         # sitemaps.org hard limit per file
 KEEP_GENERATIONS = 2
+MASS_PAGES = 10           # incremental run re-rendering more pages than this -> FULL_SLEEP
 FULL_SLEEP = 12.0         # --full: pause between pages (sda w_await alert 2026-10-06)
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sitemap-worker.php")
 
@@ -164,7 +165,10 @@ def run(a):
     todo.sort()
     # "full" also covers an incremental run without state (first run, lost
     # state): that renders all ~140 pages too and gets the same slow pace on purpose
-    pause = a.sleep if a.sleep is not None else (FULL_SLEEP if full else a.pause)
+    # A mass edit (e.g. a post_modified backfill, fix_excerpts.php) can make an
+    # incremental run re-render most pages: pace it like a full one.
+    pause = a.sleep if a.sleep is not None else (
+        FULL_SLEEP if full or len(todo) > MASS_PAGES else a.pause)
     if a.dry_run is not None:
         todo = todo[:a.dry_run]
 
@@ -206,7 +210,21 @@ def run(a):
                 raise RuntimeError(f"{j['name']}: empty now, non-empty before")
             files[j["name"]] = b
 
-    wanted = [f"posts-post-{i + 1}" for i in range(len(ranges))] + [j["name"] for j in jobs] + ["index"]
+    # the two XSL stylesheets the sitemaps reference; tiny, rendered every run
+    xsl_jobs = [{"name": f"stylesheet-{t}", "kind": "xsl", "type": t} for t in ("sitemap", "index")]
+    out = w("render", xsl_jobs)
+    for j in xsl_jobs:
+        b = out[j["name"]]["xml"].encode()
+        try:
+            root = ET.fromstring(b)
+        except ET.ParseError as e:
+            raise RuntimeError(f"{j['name']}: invalid XSL ({e})") from None
+        if root.tag != "{http://www.w3.org/1999/XSL/Transform}stylesheet":
+            raise RuntimeError(f"{j['name']}: root {root.tag}")
+        files[j["name"]] = b
+
+    wanted = ([f"posts-post-{i + 1}" for i in range(len(ranges))] + [j["name"] for j in jobs]
+              + [j["name"] for j in xsl_jobs] + ["index"])
     changed = [n for n in wanted if n in files and not (
         cur_dir and os.path.exists(os.path.join(cur_dir, n + ".xml"))
         and open(os.path.join(cur_dir, n + ".xml"), "rb").read() == files[n])]

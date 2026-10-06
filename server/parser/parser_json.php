@@ -96,17 +96,22 @@ function processArticle($connect, $id) {
 
     $post_excerpt = truncateHtml($content);
 
-    // Parse date with UTC for post_date_gmt
+    // post_date is in the SITE timezone, post_date_gmt in UTC (WordPress
+    // semantics). The site has gmt_offset=3 and no timezone_string, i.e. a
+    // fixed +03:00. Until 2026-10-06 post_date was date() in the container's
+    // UTC (== post_date_gmt) and post_modified/_gmt were left out entirely, so
+    // every imported post had a zero post_modified_gmt -> sitemap lastmod
+    // "-0001-11-30". A new post's "modified" is its publish time.
     $ts = strtotime($article["timePublished"] ?? "");
     if (!$ts) $ts = time();
-    $post_date = date("Y-m-d H:i:s", $ts);
+    $post_date = (new DateTimeImmutable("@$ts"))->setTimezone(new DateTimeZone("+03:00"))->format("Y-m-d H:i:s");
     $post_date_gmt = gmdate("Y-m-d H:i:s", $ts);
     $post_name = generateSlug($title);
 
     $stmt = mysqli_prepare($connect,
-        "INSERT IGNORE INTO wp_posts (post_date, post_date_gmt, post_content, post_excerpt, post_title, post_author, origID, origFrom, post_status, post_type, comment_status, ping_status, to_ping, pinged, post_content_filtered)
-         VALUES (?, ?, ?, ?, ?, 1, ?, 1, 'publish', 'post', 'closed', 'closed', '', '', '')");
-    mysqli_stmt_bind_param($stmt, "sssssi", $post_date, $post_date_gmt, $content, $post_excerpt, $title, $id);
+        "INSERT IGNORE INTO wp_posts (post_date, post_date_gmt, post_modified, post_modified_gmt, post_content, post_excerpt, post_title, post_author, origID, origFrom, post_status, post_type, comment_status, ping_status, to_ping, pinged, post_content_filtered)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 1, 'publish', 'post', 'closed', 'closed', '', '', '')");
+    mysqli_stmt_bind_param($stmt, "sssssssi", $post_date, $post_date_gmt, $post_date, $post_date_gmt, $content, $post_excerpt, $title, $id);
     $ok = mysqli_stmt_execute($stmt);
     $affected = mysqli_stmt_affected_rows($stmt);
     $post_id = mysqli_insert_id($connect);

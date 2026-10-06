@@ -10,7 +10,8 @@
  *                    above the last hi (new posts). With [] prints all IDs.
  *   render <jobs>    jobs = [{"name":..,"kind":"post","lo":..,"hi":..}
  *                            |{"name":..,"kind":"wp","provider":..,"subtype":..,"page":..}
- *                            |{"name":"index","kind":"index","posts":[{"page":N,"lastmod":..}]}]
+ *                            |{"name":"index","kind":"index","posts":[{"page":N,"lastmod":..}]}
+ *                            |{"name":..,"kind":"xsl","type":"sitemap"|"index"}]
  *                    Prints {name: {"xml": ..., "count": N}}.
  *
  * XML is produced by WordPress itself (core posts provider + core renderer),
@@ -108,6 +109,12 @@ foreach ($arg as $job) {
         }
         $out[$name] = ['xml' => $renderer->get_sitemap_index_xml(array_merge($entries, $others)),
                        'count' => count($entries) + count($others), 'others' => array_column($others, 'loc')];
+    } elseif ($job['kind'] === 'xsl') {
+        // the XSL that every sitemap references (?sitemap-stylesheet=sitemap|index)
+        $st = new WP_Sitemaps_Stylesheet();
+        $xsl = $job['type'] === 'index' ? $st->get_sitemap_index_stylesheet()
+                                        : $st->get_sitemap_stylesheet();
+        $out[$name] = ['xml' => $xsl, 'count' => 0];
     } else {
         fail("bad job kind");
     }
